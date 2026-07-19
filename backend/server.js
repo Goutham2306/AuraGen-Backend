@@ -1,46 +1,89 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const { generateComponent } = require('./ai-pipeline/generate-component');
+require("dotenv").config();
+
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const { Server } = require("socket.io");
+const { generateComponent } = require("./ai-pipeline/generate-component");
 
 const app = express();
-app.use(cors()); // Enabled CORS for frontend communication
+
+app.use(cors());
+app.use(express.json());
 
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
-    origin: "*", // Adjust to your frontend URL if needed
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ],
     methods: ["GET", "POST"],
-    transports: ["websocket", "polling"]
-  }
+    credentials: true,
+  },
+  transports: ["websocket", "polling"],
 });
 
-// Health check route
-app.get('/health', (req, res) => {
-  res.status(200).send('Backend is running');
+// =========================
+// Routes
+// =========================
+
+app.get("/", (req, res) => {
+  res.send("🚀 AuraGen Backend is Running!");
 });
 
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    socket: true,
+    server: "AuraGen Backend",
+  });
+});
 
-  socket.on('telemetry', (data) => {
-    console.log('Telemetry received:', data);
+// =========================
+// Socket.IO
+// =========================
+
+io.on("connection", (socket) => {
+  console.log("================================");
+  console.log("✅ User Connected");
+  console.log("Socket ID:", socket.id);
+  console.log("================================");
+
+  socket.on("error", (err) => {
+    console.error("❌ Socket Error:", err);
   });
 
-  socket.on('message', async (data) => {
+  socket.on("telemetry", async (data) => {
+    console.log("\n📊 Telemetry Received");
+    console.log(data);
+
+    socket.emit("response", {
+      status: "success",
+      message: "Telemetry received successfully",
+      receivedData: data,
+    });
+
     try {
-      console.log('Generating component for:', data.prompt);
-      
+      // Generate component whenever a prompt is provided
+      if (!data.prompt || data.prompt.trim() === "") {
+        socket.emit("component", {
+          success: false,
+          error: "Prompt is required.",
+        });
+        return;
+      }
+
+      console.log("\n🧠 Calling AI Pipeline...");
+      console.log("Prompt:", data.prompt);
+
       const result = await generateComponent(data.prompt);
 
-      // Logging for verification
-      console.log("========== AI RESULT ==========");
+      console.log("\n========== AI RESULT ==========");
       console.log(result);
-      console.log("===============================");
+      console.log("================================");
 
-      // Standardized response
       socket.emit("component", {
         success: result.success,
         jsx: result.jsx || "",
@@ -48,19 +91,45 @@ io.on('connection', (socket) => {
         error: result.error || "",
       });
 
+      console.log("✅ Component sent to Frontend");
     } catch (error) {
-      console.error('Pipeline Error:', error);
-      
-      // Robust error handling
+      console.error("\n❌ AI Pipeline Error");
+      console.error(error);
+
       socket.emit("component", {
         success: false,
-        error: error.message || "Unknown backend error",
+        error: error.message || "Unknown server error",
       });
     }
   });
+
+  socket.on("message", (msg) => {
+    console.log("\n📩 Message Received");
+    console.log(msg);
+
+    socket.emit("reply", {
+      message: "Server received your message.",
+    });
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log("================================");
+    console.log("❌ User Disconnected");
+    console.log("Socket ID:", socket.id);
+    console.log("Reason:", reason);
+    console.log("================================");
+  });
 });
 
+// =========================
+// Start Server
+// =========================
+
 const PORT = process.env.PORT || 5000;
+
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("================================");
+  console.log("🚀 AuraGen Backend Started");
+  console.log(`🌐 Server URL: http://localhost:${PORT}`);
+  console.log("================================");
 });

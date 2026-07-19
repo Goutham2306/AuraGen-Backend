@@ -1,3 +1,0 @@
-# AuraGen Backend AI Pipeline
-
-
