@@ -13,13 +13,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@google/genai": "^2.13.0",
+    "@google/genai": "^2.15.0",
     "@langchain/core": "^1.2.3",
     "@langchain/google-genai": "^2.2.0",
     "@langchain/openai": "^1.5.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "langchain": "^1.5.2",
+    "mongoose": "^9.8.1",
     "ws": "^8.21.0"
   }
 }
