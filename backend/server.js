@@ -1,60 +1,72 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
 const cors = require('cors');
+const morgan = require('morgan');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Import Routes
-const authRoutes = require('./routes/authRoutes');
-const projectRoutes = require('./routes/projectRoutes');
-
 const app = express();
 
-// Enable CORS for all incoming connections across your local network
-app.use(cors({ origin: '*' }));
+// ==========================================
+// 1. Middlewares
+// ==========================================
+app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev')); // Logs incoming HTTP requests in terminal
 
-// Connect to Local MongoDB
+// ==========================================
+// 2. Database Connection
+// ==========================================
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/auragen';
 
 mongoose
   .connect(MONGO_URI)
-  .then(() => console.log('🍃 Local MongoDB Connected Successfully'))
-  .catch((err) => console.error('❌ MongoDB Connection Error:', err.message));
+  .then(() => {
+    console.log('🍃 Local MongoDB Connected Successfully');
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB Connection Error:', err.message);
+  });
 
-// Create HTTP Server
-const server = http.createServer(app);
+// ==========================================
+// 3. API Routes
+// ==========================================
 
-// Initialize Socket.io with open CORS for cross-PC testing
-const io = new Server(server, {
-  cors: {
-    origin: '*', // Allows your teammate's PC to connect over Wi-Fi/LAN
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  },
-});
-
-// Socket.io Connection Logic
-io.on('connection', (socket) => {
-  console.log('⚡ Client connected to Socket.io:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('❌ Client disconnected:', socket.id);
+// Health Check Route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'AuraGen API Service is running smoothly 🚀',
   });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/projects', projectRoutes);
+// Authentication Routes
+app.use('/api/auth', require('./routes/authRoutes'));
 
-// Base Health Check Route
-app.get('/', (req, res) => {
-  res.send('AuraGen API Backend Server is running');
+// ==========================================
+// 4. Fallback Routes & Global Error Handler
+// ==========================================
+
+// Handle 404 (Route Not Found)
+app.use((req, res, next) => {
+  res.status(404).json({
+    error: 'Route Not Found',
+    path: req.originalUrl,
+  });
 });
 
-// Start Server listening on 0.0.0.0 (all network interfaces)
+// Global Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Server Error:', err.stack);
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal Server Error',
+  });
+});
+
+// ==========================================
+// 5. Start Server
+// ==========================================
 const PORT = process.env.PORT || 4000;
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
