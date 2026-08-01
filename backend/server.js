@@ -12,7 +12,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev')); // Logs incoming HTTP requests in terminal
+app.use(morgan('dev')); // Logs HTTP requests in terminal
 
 // ==========================================
 // 2. Database Connection
@@ -41,6 +41,9 @@ app.get('/', (req, res) => {
 
 // Authentication Routes
 app.use('/api/auth', require('./routes/authRoutes'));
+
+// Project Management Routes (Step 3 APIs)
+app.use('/api/projects', require('./routes/projectRoutes'));
 
 // ==========================================
 // 4. Fallback Routes & Global Error Handler
