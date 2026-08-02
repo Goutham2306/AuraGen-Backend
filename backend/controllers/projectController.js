@@ -1,11 +1,9 @@
 const Project = require('../models/Project');
 
-// Save / Create Project
 exports.createProject = async (req, res) => {
   try {
     const { title, currentJsx } = req.body;
 
-    // Safely extract the user ID regardless of key naming in auth middleware
     const userId = req.user.id || req.user._id || req.user.userId;
 
     const project = new Project({
@@ -22,7 +20,6 @@ exports.createProject = async (req, res) => {
   }
 };
 
-// Get All Projects for User
 exports.getUserProjects = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id || req.user.userId;
@@ -33,7 +30,6 @@ exports.getUserProjects = async (req, res) => {
   }
 };
 
-// Delete Project
 exports.deleteProject = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id || req.user.userId;
