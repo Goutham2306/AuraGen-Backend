@@ -5,10 +5,12 @@ const userSchema = new mongoose.Schema(
     username: {
       type: String,
       trim: true,
+      default: '',
     },
     name: {
       type: String,
       trim: true,
+      default: '',
     },
     email: {
       type: String,
@@ -22,18 +24,18 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Password is required'],
       minlength: 6,
     },
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpire: {
+      type: Date,
+      default: null,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
-
-// Synchronous pre-save hook (no next parameter needed in modern Mongoose)
-userSchema.pre('save', function () {
-  if (!this.username && this.name) {
-    this.username = this.name;
-  }
-  if (!this.name && this.username) {
-    this.name = this.username;
-  }
-});
 
 module.exports = mongoose.model('User', userSchema);

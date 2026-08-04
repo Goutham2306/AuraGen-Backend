@@ -1,67 +1,104 @@
-const express = require("express");
-const { createServer } = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
-require("dotenv").config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+require('dotenv').config();
 
-// 1. Import Database Connection
-const connectDB = require("./config/db");
+// Import Ayush's updated AI pipeline function
+const { generateComponent } = require('../aura-ai-pipeline/generate-component');
 
-// 2. Connect to MongoDB
+const connectDB = require('./config/db');
+const authRoutes = require('./routes/authRoutes');
+const projectRoutes = require('./routes/projectRoutes');
+
+// Initialize Express app & HTTP Server
+const app = express();
+const server = http.createServer(app);
+
+// Connect to MongoDB Database
 connectDB();
 
-// 3. Import API Routes
-const authRoutes = require("./routes/authRoutes");
-const projectRoutes = require("./routes/projectRoutes");
-
-const app = express();
-const PORT = process.env.PORT || 4000;
-
-// 4. Configure Middleware & CORS
+// ================= CORS CONFIGURATION =================
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    origin: '*', // Allows requests from local, Vercel, and Ngrok origins
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
   })
 );
 
-app.use(express.json()); // Body parser for JSON payload support
+// Middleware
+app.use(express.json());
 
-// 5. API Routes Setup
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+// ================= ROUTES =================
+
+// 1. Base Test Route
+app.get('/', (req, res) => {
+  res.send('AuraGen Backend Running...');
 });
 
-app.use("/api/auth", authRoutes);
-app.use("/api/projects", projectRoutes);
+// 2. Health Check Route (For Ullas / Frontend Verification)
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'AuraGen Backend is healthy and running!',
+    timestamp: new Date().toISOString(),
+  });
+});
 
-// 6. HTTP Server & Socket.IO Setup
-const httpServer = createServer(app);
+// 3. API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/projects', projectRoutes);
 
-const io = new Server(httpServer, {
+// 4. Catch-all 404 handler for missing routes
+app.use((req, res) => {
+  res.status(404).json({ error: `Cannot ${req.method} ${req.url}` });
+});
+
+// ================= SOCKET.IO ENGINE =================
+
+const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true,
+    origin: '*',
+    methods: ['GET', 'POST'],
   },
 });
 
-// 7. Socket.IO Event Handlers
-io.on("connection", (socket) => {
-  console.log(`Client connected: ${socket.id}`);
+io.on('connection', (socket) => {
+  console.log(`🔌 Client connected: ${socket.id}`);
 
-  // Handle live code/editor sync events
-  socket.on("code-change", (data) => {
-    socket.broadcast.emit("code-update", data);
+  // Telemetry event sent from Ullas's frontend
+  socket.on('user-telemetry', async (data) => {
+    console.log('📊 Received Telemetry Signal:', data);
+
+    try {
+      // Call Ayush's pipeline directly with prompt & telemetry data
+      const aiResponse = await generateComponent(
+        data?.prompt || 'Generate adaptive dashboard card',
+        {
+          hesitation: data?.hesitation || 0,
+          clicks: data?.clicks || 0,
+        }
+      );
+
+      // Emit real AI-generated component & metrics back to frontend UI
+      socket.emit('component', aiResponse);
+      console.log('⚡ Sent real AI Component response to client');
+    } catch (err) {
+      console.error('❌ Socket AI Processing Error:', err);
+      socket.emit('error', { message: 'Failed to generate adaptive component' });
+    }
   });
 
-  socket.on("disconnect", () => {
-    console.log(`Client disconnected: ${socket.id}`);
+  socket.on('disconnect', () => {
+    console.log(`❌ Client disconnected: ${socket.id}`);
   });
 });
 
-// 8. Start Express Server
-httpServer.listen(PORT, () => {
-  console.log(`Backend server running on port ${PORT}`);
+// ================= START SERVER =================
+
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });

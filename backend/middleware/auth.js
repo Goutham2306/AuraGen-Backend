@@ -8,7 +8,8 @@ const authMiddleware = (req, res, next) => {
   }
 
   try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_12345';
+    const verified = jwt.verify(token, JWT_SECRET);
     req.user = verified;
     next();
   } catch (err) {
