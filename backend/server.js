@@ -4,60 +4,51 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 require('dotenv').config();
 
-// Import Ayush's updated AI pipeline function
+// Import AI pipeline from aura-ai-pipeline directory
 const { generateComponent } = require('../aura-ai-pipeline/generate-component');
 
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 
-// Initialize Express app & HTTP Server
 const app = express();
 const server = http.createServer(app);
 
-// Connect to MongoDB Database
+// Connect MongoDB
 connectDB();
 
-// ================= CORS CONFIGURATION =================
+// CORS Middleware Setup
 app.use(
   cors({
-    origin: '*', // Allows requests from local, Vercel, and Ngrok origins
+    origin: '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
   })
 );
 
-// Middleware
 app.use(express.json());
 
-// ================= ROUTES =================
-
-// 1. Base Test Route
-app.get('/', (req, res) => {
-  res.send('AuraGen Backend Running...');
-});
-
-// 2. Health Check Route (For Ullas / Frontend Verification)
+// Base & Healthcheck Routes
+app.get('/', (req, res) => res.send('AuraGen Backend Running...'));
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    message: 'AuraGen Backend is healthy and running!',
+    message: 'AuraGen Backend is healthy!',
     timestamp: new Date().toISOString(),
   });
 });
 
-// 3. API Routes
+// Auth and Project Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 
-// 4. Catch-all 404 handler for missing routes
+// Catch-all 404
 app.use((req, res) => {
   res.status(404).json({ error: `Cannot ${req.method} ${req.url}` });
 });
 
-// ================= SOCKET.IO ENGINE =================
-
+// Socket.IO Server Engine
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -68,35 +59,37 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
 
-  // Telemetry event sent from Ullas's frontend
-  socket.on('user-telemetry', async (data) => {
+  // Telemetry processor function
+  const handleTelemetry = async (data) => {
     console.log('📊 Received Telemetry Signal:', data);
 
     try {
-      // Call Ayush's pipeline directly with prompt & telemetry data
+      // Execute AI Pipeline
       const aiResponse = await generateComponent(
-        data?.prompt || 'Generate adaptive dashboard card',
+        data?.prompt || 'Build dynamic UI card',
         {
           hesitation: data?.hesitation || 0,
           clicks: data?.clicks || 0,
         }
       );
 
-      // Emit real AI-generated component & metrics back to frontend UI
+      // Emit complete payload back to Frontend Dynamic Renderer
       socket.emit('component', aiResponse);
-      console.log('⚡ Sent real AI Component response to client');
+      console.log('⚡ Sent AI Component response to client');
     } catch (err) {
-      console.error('❌ Socket AI Processing Error:', err);
+      console.error('❌ Socket Processing Error:', err);
       socket.emit('error', { message: 'Failed to generate adaptive component' });
     }
-  });
+  };
+
+  // Handle both event names for seamless sync
+  socket.on('user-telemetry', handleTelemetry);
+  socket.on('telemetry', handleTelemetry);
 
   socket.on('disconnect', () => {
     console.log(`❌ Client disconnected: ${socket.id}`);
   });
 });
-
-// ================= START SERVER =================
 
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
