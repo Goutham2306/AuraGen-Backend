@@ -1,97 +1,113 @@
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+const mongoose = require('mongoose');
+
+// 1. Locate and load .env from local backend folder or root folder
+const localEnvPath = path.resolve(__dirname, '.env');
+const rootEnvPath = path.resolve(__dirname, '../.env');
+
+if (fs.existsSync(localEnvPath)) {
+  dotenv.config({ path: localEnvPath });
+} else if (fs.existsSync(rootEnvPath)) {
+  dotenv.config({ path: rootEnvPath });
+} else {
+  dotenv.config();
+}
+
+// 2. Map variable aliases to GOOGLE_API_KEY if needed
+process.env.GOOGLE_API_KEY = 
+  process.env.GOOGLE_API_KEY || 
+  process.env.GEMINI_API_KEY || 
+  process.env.GOOGLE_GEMINI_API_KEY;
+
+// 3. Validate API key existence before requiring AI modules
+if (!process.env.GOOGLE_API_KEY) {
+  console.error('\n❌ ERROR: GOOGLE_API_KEY is not defined in your .env file!');
+  console.error('Please open your .env file and ensure it contains standard key formatting:');
+  console.error('GOOGLE_API_KEY=AIzaSy...\n');
+  process.exit(1);
+}
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-require('dotenv').config();
 
-// Import AI pipeline from aura-ai-pipeline directory
-const { generateComponent } = require('../aura-ai-pipeline/generate-component');
+// 4. Import root generator module safely AFTER key is mapped
+const { generateComponent } = require('../generate-component');
 
-const connectDB = require('./config/db');
-const authRoutes = require('./routes/authRoutes');
-const projectRoutes = require('./routes/projectRoutes');
-
+// 5. Initialize Express App
 const app = express();
-const server = http.createServer(app);
-
-// Connect MongoDB
-connectDB();
-
-// CORS Middleware Setup
-app.use(
-  cors({
-    origin: '*',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
-  })
-);
-
+app.use(cors());
 app.use(express.json());
 
-// Base & Healthcheck Routes
-app.get('/', (req, res) => res.send('AuraGen Backend Running...'));
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    message: 'AuraGen Backend is healthy!',
-    timestamp: new Date().toISOString(),
+const server = http.createServer(app);
+
+// 6. Connect to MongoDB
+const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/auragen';
+
+mongoose.connect(mongoUri)
+  .then(() => {
+    console.log('[MongoDB] Database connected successfully');
+  })
+  .catch((err) => {
+    console.error('[MongoDB] Connection error:', err.message);
   });
-});
 
-// Auth and Project Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/projects', projectRoutes);
-
-// Catch-all 404
-app.use((req, res) => {
-  res.status(404).json({ error: `Cannot ${req.method} ${req.url}` });
-});
-
-// Socket.IO Server Engine
+// 7. Configure Socket.IO
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST'],
-  },
+    methods: ['GET', 'POST']
+  }
 });
 
+// 8. Socket.IO Connections & Event Handlers
 io.on('connection', (socket) => {
-  console.log(`🔌 Client connected: ${socket.id}`);
+  console.log(`[Socket] Client connected: ${socket.id}`);
 
-  // Telemetry processor function
-  const handleTelemetry = async (data) => {
-    console.log('📊 Received Telemetry Signal:', data);
+  socket.on('generate_component', async (data) => {
+    console.log('[Socket] Request received:', data);
 
     try {
-      // Execute AI Pipeline
-      const aiResponse = await generateComponent(
-        data?.prompt || 'Build dynamic UI card',
-        {
-          hesitation: data?.hesitation || 0,
-          clicks: data?.clicks || 0,
-        }
-      );
+      const prompt = typeof data === 'string' ? data : data.prompt;
+      
+      // Execute pipeline generation
+      const result = await generateComponent(prompt);
 
-      // Emit complete payload back to Frontend Dynamic Renderer
-      socket.emit('component', aiResponse);
-      console.log('⚡ Sent AI Component response to client');
-    } catch (err) {
-      console.error('❌ Socket Processing Error:', err);
-      socket.emit('error', { message: 'Failed to generate adaptive component' });
+      // Return complete 6-key response payload
+      socket.emit('component_response', {
+        success: true,
+        jsx: result.jsx || result.code || '',
+        explanation: result.explanation || 'Component generated successfully.',
+        cognitiveLoad: result.cognitiveLoad ?? 0,
+        stressLevel: result.stressLevel ?? 0,
+        focusScore: result.focusScore ?? 0
+      });
+
+    } catch (error) {
+      console.error('[Socket] Generation error:', error);
+
+      // Return fallback error payload preserving exact schema
+      socket.emit('component_response', {
+        success: false,
+        jsx: '',
+        explanation: `Generation failed: ${error.message}`,
+        cognitiveLoad: 0,
+        stressLevel: 0,
+        focusScore: 0
+      });
     }
-  };
-
-  // Handle both event names for seamless sync
-  socket.on('user-telemetry', handleTelemetry);
-  socket.on('telemetry', handleTelemetry);
+  });
 
   socket.on('disconnect', () => {
-    console.log(`❌ Client disconnected: ${socket.id}`);
+    console.log(`[Socket] Client disconnected: ${socket.id}`);
   });
 });
 
+// 9. Launch Server
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`[Server] Running on port ${PORT}`);
 });
